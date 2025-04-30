@@ -3,6 +3,7 @@ from rclpy.node import Node
 from nav_msgs.msg import OccupancyGrid
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point, PointStamped
+import numpy as np
 
 class ObstaclePublisher(Node): 
     def __init__(self):
@@ -30,6 +31,19 @@ class ObstaclePublisher(Node):
             self.map_cb,
             1
         )
+
+    def map_callback(self, msg):
+        self.get_logger().info("Received map")
+
+        self.resolution = msg.info.resolution
+        self.width = msg.info.width
+        self.height = msg.info.height
+        self.origin_x = msg.info.origin.position.x
+        self.origin_y = msg.info.origin.position.y
+
+        # Convert flat data list to 2D numpy array
+        self.grid = np.array(msg.data, dtype=np.int8).reshape((self.height, self.width))
+
 
     def click_callback(self, msg):
             # Convert clicked point to grid coordinates
