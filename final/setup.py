@@ -13,6 +13,7 @@ setup(
         ('share/' + package_name, ['package.xml']),
         ('lib/'+package_name+"/cv", glob.glob(os.path.join('final/cv', '*.py'))),
         ('share/final/launch', glob.glob(os.path.join('launch', '*launch.xml'))),
+        ('lib/'+package_name+"/computer_vision", glob.glob(os.path.join('final/computer_vision', '*.py'))),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -24,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'race = final.race:main',
+            'light_detector = final.light_detector:main',
         ],
     },
 )
