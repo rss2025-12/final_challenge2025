@@ -1,18 +1,8 @@
-import rclpy
 from rclpy.node import Node
-from tf_transformations import euler_from_quaternion, quaternion_from_euler
-
-
-assert rclpy
-from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray, Quaternion, Point, Pose
-from nav_msgs.msg import OccupancyGrid, Odometry
-from .utils import LineTrajectory
-# from tf_transformations import euler_from_quaternion
+from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray, Point
+from nav_msgs.msg import Odometry
 from scipy.spatial.transform import Rotation as R
-
-from scipy.ndimage import grey_dilation
 import numpy as np
-import heapq, time
 
 class stateMachineInput(Node):
     """
@@ -92,8 +82,6 @@ class stateMachineInput(Node):
 
         self.current_pose = np.array([x, y])
 
-        # self.current_pose = car
-
         # Check if at goal
         if np.linalg.norm(self.current_goal_pose - self.current_pose) < 0.25:
             if self.goals_reached[1]:
@@ -147,8 +135,5 @@ class stateMachineInput(Node):
 
         self.get_logger().info("Sent new start and goal poses")
         
-
-
-
 if __name__ == "__main__":
     pass
