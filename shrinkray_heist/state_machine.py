@@ -41,7 +41,7 @@ class stateMachineInput(Node):
         )
 
         self.banana_point_sub = self.create_subscription(
-            Point,
+            PoseArray,
             self.banana_topic,
             self.banana_point_cb,
             10,
@@ -103,11 +103,16 @@ class stateMachineInput(Node):
             self.replan()         
         
     def banana_point_cb(self, msg: Point):
-        self.banana_points.append(np.array([msg.x, msg.y]))
-        if len(self.banana_points) == 1:
-            self.current_goal_pose = self.banana_points[0]
-        self.get_logger().info(f'Banana point added, current banana points are: {self.banana_points}')
-        return
+       # Extract the first two pose positions and convert to numpy arrays
+        self.banana_points = [
+            np.array([msg.poses[0].position.x, msg.poses[0].position.y]),
+            np.array([msg.poses[1].position.x, msg.poses[1].position.y])
+        ]
+
+        # Set the current goal pose to the first banana point
+        self.current_goal_pose = self.banana_points[0]
+        
+        self.get_logger().info(f'Banana points set to: {self.banana_points}')
 
     def replan(self):
         start_x, start_y = self.current_pose
