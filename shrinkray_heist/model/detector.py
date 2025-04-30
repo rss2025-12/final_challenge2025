@@ -1,9 +1,11 @@
 import random
 
 import cv2
+import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 
+    
 def _label_to_color(label):
     random.seed(label)  # Use label as seed to generate a stable color
     r = random.randint(0, 255)
@@ -11,9 +13,59 @@ def _label_to_color(label):
     b = random.randint(0, 255)
     return (r, g, b)
 
+def get_yellow_regions(image_bgr,
+                       lower_hsv=(20, 100, 100),
+                       upper_hsv=(35, 255, 255),
+                       min_area=500):
+    """
+    image_bgr: H×W×3 BGR numpy array
+    Returns a list of (x, y, w, h) boxes for yellow blobs ≥ min_area.
+    """
+    hsv = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(hsv, lower_hsv, upper_hsv)
+    # clean small specks
+    kernel = np.ones((5, 5), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    # find contours
+    cnts, _ = cv2.findContours(mask,
+                               cv2.RETR_EXTERNAL,
+                               cv2.CHAIN_APPROX_SIMPLE)
+    boxes = []
+    for c in cnts:
+        x, y, w, h = cv2.boundingRect(c)
+        if w * h >= min_area:
+            boxes.append((x, y, w, h))
+    return boxes
 
+def _box_iou(b1, b2):
+    x1,y1,x2,y2 = b1
+    x1b,y1b,x2b,y2b = b2
+    xi1, yi1 = max(x1, x1b), max(y1, y1b)
+    xi2, yi2 = min(x2, x2b), min(y2, y2b)
+    inter_w = max(0, xi2 - xi1)
+    inter_h = max(0, yi2 - yi1)
+    inter = inter_w * inter_h
+    area1 = (x2 - x1) * (y2 - y1)
+    area2 = (x2b - x1b) * (y2b - y1b)
+    union = area1 + area2 - inter
+    return inter / union if union > 0 else 0.0
+    
+        
+def _simple_nms(preds, iou_thresh=0.5):
+        """
+        preds: list of ((x1,y1,x2,y2), label)
+        returns: filtered list with high‐IoU duplicates removed
+        """
+        keep = []
+        for box, label in preds:
+            if not any(
+                label == lbl and _box_iou(box, obox) > iou_thresh
+                for obox, lbl in keep
+            ):
+                keep.append((box, label))
+        return keep
 class Detector:
-    def __init__(self, yolo_dir="/root/yolo", from_tensor_rt=True, threshold=0.5):
+    def __init__(self, yolo_dir="/root/yolo", from_tensor_rt=True, threshold=0.4):
         # local import
         from ultralytics import YOLO
         cls = YOLO
@@ -27,6 +79,7 @@ class Detector:
     
     def to(self, device):
         self.model.to(device)
+        
 
     def predict(self, img, silent=True):
         """
@@ -55,7 +108,7 @@ class Detector:
         #convert original image to rgb
         original_image = results.orig_img
         cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB, original_image)
-        
+
         return dict(predictions=predictions, original_image=original_image)
     
     def set_threshold(self, threshold):
@@ -123,21 +176,31 @@ class Detector:
     @property
     def classes(self):
         return self.model.names
-        
+    
+
+     
     
 def demo():
     import os
-    model = Detector()
-    model.set_threshold(0.5)
+    import numpy as np
+    from PIL import Image
+
+    model = Detector(
+        yolo_dir="src/final_challenge2025/shrinkray_heist/model",
+        from_tensor_rt=False
+    )
+    model.set_threshold(0.4)
     
     img_path = f"{os.path.dirname(__file__)}/../../media/minion.png" 
-        
+
+
+
     img = Image.open(img_path)
     results = model.predict(img)
     
     predictions = results["predictions"]
     original_image = results["original_image"]
-        
+
     out = model.draw_box(original_image, predictions, draw_all=True)
     
     save_path = f"{os.path.dirname(__file__)}/demo_output.png"

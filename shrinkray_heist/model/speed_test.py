@@ -3,7 +3,11 @@ if __name__ == '__main__':
     import time
     import numpy as np
     N = 100
-    model = Detector()
+    model = Detector(
+        yolo_dir="/home/racecar/models",
+        from_tensor_rt=False
+
+    )
     
     t0 = time.perf_counter()
     for _ in range(N):
