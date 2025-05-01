@@ -1,0 +1,20 @@
+state_machine:
+  ros__parameters:
+    sm_start_pose_topic: "/initialpose"
+    clicked_point_topic: "/shrinkray_part"
+    odom_topic: "/odom"
+obstacle_publisher:
+  ros__parameters:
+    map_topic: "/map"
+trajectory_planner:
+  ros__parameters:
+    odom_topic: "/odom"
+    map_topic: "/map"
+    scan_topic: "/scan"
+    initial_pose_topic: "/sm_initialpose"
+trajectory_follower:
+  ros__parameters:
+    odom_topic: "/odom"
+    drive_topic: "/drive"
+
+

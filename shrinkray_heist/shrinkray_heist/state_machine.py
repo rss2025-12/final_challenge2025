@@ -1,21 +1,24 @@
+import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray, Point
 from nav_msgs.msg import Odometry
 from scipy.spatial.transform import Rotation as R
 import numpy as np
 
-class stateMachineInput(Node):
+class StateMachine(Node):
     """
     Based on current position and found/reached goals, outputs a new start/goal point to plan between
     """
     def __init__(self):
+        super().__init__("state_machine")
         self.declare_parameter('sm_start_pose_topic', "default")
-        self.declare_parameter('clicked_point', "default") 
+        self.declare_parameter('clicked_point_topic', "default") 
         self.declare_parameter('odom_topic', "default")
 
         self.start_pose_topic = self.get_parameter('sm_start_pose_topic').get_parameter_value().string_value
         self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
-        self.banana_topic = self.get_parameter('clicked_point').get_parameter_value().string_value
+        self.banana_topic = self.get_parameter('clicked_point_topic').get_parameter_value().string_value
+        self.get_logger().info(f'THE ODOM TOPIC IS {self.odom_topic}')
 
         self.start_pose_sub = self.create_subscription(
             PoseWithCovarianceStamped,
@@ -24,7 +27,8 @@ class stateMachineInput(Node):
             10,
         )
 
-        self.odom_sub = self.create_subscription(Odometry,
+        self.odom_sub = self.create_subscription(
+            Odometry,
             self.odom_topic,
             self.odom_cb,
             1,
@@ -39,7 +43,7 @@ class stateMachineInput(Node):
 
         self.initial_pub = self.create_publisher(
             PoseWithCovarianceStamped,
-            "/initialpose",
+            "/sm_initialpose",
             10
         )
         
@@ -70,6 +74,8 @@ class stateMachineInput(Node):
         self.get_logger().info(f"Initial Pose Received")
     
     def odom_cb(self, odometry_msg):
+        if self.current_goal_pose is None:
+            return
         x = odometry_msg.pose.pose.position.x
         y = odometry_msg.pose.pose.position.y
         quaternion = [
@@ -88,7 +94,8 @@ class stateMachineInput(Node):
                 self.current_goal_pose = self.start_pose
             elif self.goals_reached[0]:
                 self.current_goal_pose = self.banana_points[1]  
-            self.replan()         
+            self.replan()  
+        return       
         
     def banana_point_cb(self, msg: Point):
        # Extract the first two pose positions and convert to numpy arrays
@@ -135,5 +142,12 @@ class stateMachineInput(Node):
 
         self.get_logger().info("Sent new start and goal poses")
         
-if __name__ == "__main__":
-    pass
+def main(args=None):
+    rclpy.init(args=args)
+    grid_manager = StateMachine()
+    rclpy.spin(grid_manager)
+    grid_manager.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
