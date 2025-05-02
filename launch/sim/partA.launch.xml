@@ -15,3 +15,9 @@
         <param from="$(find-pkg-share heist)/config/sim/sim_config.yaml"/>
     </node>
 </launch>
+
+<!-- <launch>
+    <node pkg="heist" exec="obstacle_publisher" name="obstacle_publisher">
+        <param from="$(find-pkg-share heist)/config/sim/sim_config.yaml"/>
+    </node>
+</launch> -->

@@ -1,5 +1,6 @@
 import rclpy
 from rclpy.node import Node
+from visualization_msgs.msg import Marker
 from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray, Point
 from nav_msgs.msg import Odometry
 from scipy.spatial.transform import Rotation as R
@@ -18,7 +19,9 @@ class StateMachine(Node):
         self.start_pose_topic = self.get_parameter('sm_start_pose_topic').get_parameter_value().string_value
         self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
         self.banana_topic = self.get_parameter('clicked_point_topic').get_parameter_value().string_value
-        self.get_logger().info(f'THE ODOM TOPIC IS {self.odom_topic}')
+        self.marker_pub = self.create_publisher(Marker, '/bananaaa', 10)
+
+        # self.get_logger().info(f'THE ODOM TOPIC IS {self.odom_topic}')
 
         self.start_pose_sub = self.create_subscription(
             PoseWithCovarianceStamped,
@@ -71,6 +74,7 @@ class StateMachine(Node):
         _, _, theta = R.from_quat(quaternion).as_euler('xyz', degrees=False)
 
         self.start_pose = np.array([x, y, theta])
+        self.replan()
         self.get_logger().info(f"Initial Pose Received")
     
     def odom_cb(self, odometry_msg):
@@ -89,16 +93,23 @@ class StateMachine(Node):
         self.current_pose = np.array([x, y])
 
         # Check if at goal
-        if np.linalg.norm(self.current_goal_pose - self.current_pose) < 0.25:
+        self.get_logger().info(f'Distance to goal pose {np.linalg.norm(self.current_goal_pose - self.current_pose)}')
+        if np.linalg.norm(self.current_goal_pose - self.current_pose) < 0.3:
+            self.get_logger().info('At current goal pose')
             if self.goals_reached[1]:
                 self.current_goal_pose = self.start_pose
             elif self.goals_reached[0]:
-                self.current_goal_pose = self.banana_points[1]  
+                self.current_goal_pose = self.banana_points[1]
+                self.goals_reached[1] = True
+            else:
+                self.goals_reached[0] = True  
             self.replan()  
         return       
         
     def banana_point_cb(self, msg: Point):
        # Extract the first two pose positions and convert to numpy arrays
+        if len(self.banana_points) == 2:
+            return
         self.banana_points = [
             np.array([msg.poses[0].position.x, msg.poses[0].position.y]),
             np.array([msg.poses[1].position.x, msg.poses[1].position.y])
@@ -106,6 +117,8 @@ class StateMachine(Node):
 
         # Set the current goal pose to the first banana point
         self.current_goal_pose = self.banana_points[0]
+        self.publish_markers()
+        # self.replan()
         
         self.get_logger().info(f'Banana points set to: {self.banana_points}')
 
@@ -141,7 +154,28 @@ class StateMachine(Node):
         self.goal_pub.publish(goal_msg)
 
         self.get_logger().info("Sent new start and goal poses")
-        
+
+    def publish_markers(self):
+        marker = Marker()
+        marker.header.stamp = self.get_clock().now().to_msg()
+        marker.header.frame_id = 'map'
+        marker.ns = 'banana:)'
+        marker.id = 0
+        # marker.type = Marker.POINTS
+        marker.type = 8
+        marker.action = Marker.ADD
+
+        marker.points.append(Point(x=self.banana_points[0][0], y=self.banana_points[0][1], z=0.0))
+        marker.points.append(Point(x=self.banana_points[1][0], y=self.banana_points[1][1], z=0.0))
+
+        marker.scale.x = .5
+        marker.scale.y = .5
+        marker.color.r = 1.0
+        marker.color.g = 1.0
+        marker.color.b = 0.0
+        marker.color.a = 1.0
+        self.marker_pub.publish(marker)
+  
 def main(args=None):
     rclpy.init(args=args)
     grid_manager = StateMachine()

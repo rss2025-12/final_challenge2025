@@ -37,6 +37,7 @@ class ObstaclePublisher(Node):
             1
         )
         self.resolution = None
+        self.clicks = 0
         
 
     def world_to_map(self, x, y):
@@ -85,66 +86,69 @@ class ObstaclePublisher(Node):
 
 
     def click_callback(self, msg):
-            self.get_logger().info("Clicked point")
-            # Convert clicked point to grid coordinates
-            x, y = self.world_to_map(msg.point.x, msg.point.y)
+        self.clicks += 1
+        if self.clicks <= 2:
+                return
+        self.get_logger().info("Clicked point")
+        # Convert clicked point to grid coordinates
+        x, y = self.world_to_map(msg.point.x, msg.point.y)
+        
+        if 0 <= x < self.map_width and 0 <= y < self.map_height:
+            self.grid[y, x] = 1
+
+            self.expand_obstacle(x, y)
             
-            if 0 <= x < self.map_width and 0 <= y < self.map_height:
-                self.grid[y, x] = 1
-
-                self.expand_obstacle(x, y)
-                
-                self.get_logger().info(f'Added obstacle at ({x}, {y})')
-                self.publish_markers()
+            self.get_logger().info(f'Added obstacle at ({x}, {y})')
+            self.publish_markers()
 
 
-            else:
-                self.get_logger().warn(f'Clicked point ({msg.point.x}, {msg.point.y}) is outside grid bounds')
+        else:
+            self.get_logger().warn(f'Clicked point ({msg.point.x}, {msg.point.y}) is outside grid bounds')
 
 
     def expand_obstacle(self, x, y):
-            """
-            Expand the obstacle to create a safety margin
-            """
-            expansion_radius = 4
-            
-            for dx in range(-expansion_radius, expansion_radius + 1):
-                for dy in range(-expansion_radius, expansion_radius + 1):
-                    new_x, new_y = x + dx, y + dy
-                    if 0 <= new_x < self.map_width and 0 <= new_y < self.map_height:
-                        self.get_logger().info(f'Updating grid pt {(new_x, new_y)} from {self.grid[new_y, new_x]} to 1')
-                        self.grid[new_y, new_x] = 1
+        """
+        Expand the obstacle to create a safety margin
+        """
+        expansion_radius = 4
+        
+        for dx in range(-expansion_radius, expansion_radius + 1):
+            for dy in range(-expansion_radius, expansion_radius + 1):
+                new_x, new_y = x + dx, y + dy
+                if 0 <= new_x < self.map_width and 0 <= new_y < self.map_height:
+                    # self.get_logger().info(f'Updating grid pt {(new_x, new_y)} from {self.grid[new_y, new_x]} to 1')
+                    self.grid[new_y, new_x] = 1
 
     def publish_markers(self):
-            marker = Marker()
-            marker.header.stamp = self.get_clock().now().to_msg()
-            marker.header.frame_id = 'map'
-            marker.ns = 'obstacles'
-            marker.id = 0
-            # marker.type = Marker.POINTS
-            marker.type = 8
-            marker.action = Marker.ADD
-            
-            # Add points for each occupied cell
-            for y in range(self.map_height):
-                for x in range(self.map_width):
-                    if self.grid[y, x] == 1:
-                        new_x, new_y = self.map_to_world(x, y)
-                        marker.points.append(
-                            Point(x=new_x, y=new_y, z=0.0)
-                        )
-            
-            marker.scale.x = .5
-            marker.scale.y = .5
-            marker.color.r = 1.0
-            marker.color.g = 0.0
-            marker.color.b = 0.0
-            marker.color.a = 1.0
-            self.marker_pub.publish(marker)
-            self.get_logger().info(f'Added obstacle marker to map')
-            new_grid = self.old_grid
-            new_grid.data = self.grid.flatten().tolist()
-            self.grid_pub.publish(new_grid)
+        marker = Marker()
+        marker.header.stamp = self.get_clock().now().to_msg()
+        marker.header.frame_id = 'map'
+        marker.ns = 'obstacles'
+        marker.id = 0
+        # marker.type = Marker.POINTS
+        marker.type = 8
+        marker.action = Marker.ADD
+        
+        # Add points for each occupied cell
+        for y in range(self.map_height):
+            for x in range(self.map_width):
+                if self.grid[y, x] == 1:
+                    new_x, new_y = self.map_to_world(x, y)
+                    marker.points.append(
+                        Point(x=new_x, y=new_y, z=0.0)
+                    )
+        
+        marker.scale.x = .5
+        marker.scale.y = .5
+        marker.color.r = 1.0
+        marker.color.g = 0.0
+        marker.color.b = 0.0
+        marker.color.a = 1.0
+        self.marker_pub.publish(marker)
+        self.get_logger().info(f'Added obstacle marker to map')
+        new_grid = self.old_grid
+        new_grid.data = self.grid.flatten().tolist()
+        self.grid_pub.publish(new_grid)
 
 def main(args=None):
     rclpy.init(args=args)
