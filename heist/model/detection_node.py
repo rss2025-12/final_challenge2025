@@ -34,6 +34,7 @@ class DetectorNode(Node):
 
         #DRAW BOXES:
         annotated = self.detector.draw_boxes(out["original_image"], preds, draw_all =True)
+        cv2.imwrite('screenshot.jpg', annotated)
 
         #convert back to ROS and publish
         out_msg = self.bridge.cv2_to_imgmsg(np.array(annotated), encoding="rgb8")
@@ -50,3 +51,9 @@ def main(args=None):
 
 if __name__=="__main__":
     main()
+
+# image = self.bridge.imgmsg_to_cv2(image_msg, "bgr8")
+# cv2.imwrite('screenshot.jpg', image)
+# if is_light:
+#     cv2.imwrite('screenshot.jpg', image)
+

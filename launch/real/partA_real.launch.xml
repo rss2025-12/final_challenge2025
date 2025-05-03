@@ -1,0 +1,17 @@
+<launch>
+    <node pkg="heist" exec="state_machine" name="state_machine" output="screen">
+        <param from="$(find-pkg-share heist)/config/real/real_config.yaml"/>
+    </node>
+    <node pkg="heist" exec="obstacle_publisher" name="obstacle_publisher">
+        <param from="$(find-pkg-share heist)/config/real/real_config.yaml"/>
+    </node>
+    <node pkg="heist" exec="basement_point_publisher" name="basement_point_publisher">
+        <param from="$(find-pkg-share heist)/config/real/real_config.yaml"/>
+    </node>
+    <node pkg="path_planning" exec="trajectory_planner" name="trajectory_planner" output="screen">
+        <param from="$(find-pkg-share heist)/config/real/real_config.yaml"/>
+    </node>
+    <node pkg="localization" exec="trajectory_follower" name="trajectory_follower">
+        <param from="$(find-pkg-share heist)/config/real/real_config.yaml"/>
+    </node>
+</launch>
