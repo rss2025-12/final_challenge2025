@@ -33,6 +33,9 @@ setup(
             'state_machine = heist.state_machine:main',
             'obstacle_publisher = heist.obstacle_publisher:main',
             'basement_point_publisher = heist.basement_point_publisher:main',
+            'light_detector = heist.light_detector:main',
+            'light_detector = heist.light_detector:main',
+            'detection_node = shrinkray_heist.model.detection_node:main',
         ],
     },
 )
