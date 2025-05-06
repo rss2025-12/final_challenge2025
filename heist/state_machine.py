@@ -4,7 +4,9 @@ from visualization_msgs.msg import Marker
 from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray, Point
 from nav_msgs.msg import Odometry
 from scipy.spatial.transform import Rotation as R
+from sensor_msgs.msg import Image
 import numpy as np
+from std_msgs.msg import Int32, Bool
 
 class StateMachine(Node):
     """
@@ -20,6 +22,11 @@ class StateMachine(Node):
         self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
         self.banana_topic = self.get_parameter('clicked_point_topic').get_parameter_value().string_value
         self.marker_pub = self.create_publisher(Marker, '/bananaaa', 10)
+        self.banana_id_pub = self.create_publisher(Int32, '/banana_id', 1)
+        self.back_up_pub = self.create_publisher(Bool, '/back_up', 1)
+        # NEW CODE
+        self.detection_sub = self.create_subscription(Image, '/detector/output_image', self.detection_callback, 1)
+        self.goal_number = 0
 
         # self.get_logger().info(f'THE ODOM TOPIC IS {self.odom_topic}')
 
@@ -61,6 +68,10 @@ class StateMachine(Node):
         self.current_goal_pose = None
         self.banana_points = []
         self.goals_reached = [False, False]
+        self.goal_found_time = None
+        # self.reversed = False
+        self.reverse_condition = False
+        self.saw_banana = False
     
     def start_pose_cb(self, pose):
         x = pose.pose.pose.position.x
@@ -73,11 +84,12 @@ class StateMachine(Node):
         ]
         _, _, theta = R.from_quat(quaternion).as_euler('xyz', degrees=False)
 
-        self.start_pose = np.array([x, y, theta])
+        self.start_pose = np.array([x, y]) #, theta])
+        self.current_pose = np.array([x, y])
         self.replan()
         self.get_logger().info(f"Initial Pose Received")
     
-    def odom_cb(self, odometry_msg):
+    def odom_cb(self, odometry_msg, goal_rad=1.0):
         if self.current_goal_pose is None:
             return
         x = odometry_msg.pose.pose.position.x
@@ -92,20 +104,101 @@ class StateMachine(Node):
 
         self.current_pose = np.array([x, y])
 
-        # Check if at goal
-        self.get_logger().info(f'Distance to goal pose {np.linalg.norm(self.current_goal_pose - self.current_pose)}')
-        if np.linalg.norm(self.current_goal_pose - self.current_pose) < 0.3:
-            self.get_logger().info('At current goal pose')
-            if self.goals_reached[1]:
-                self.current_goal_pose = self.start_pose
-            elif self.goals_reached[0]:
+        back_up_msg = Bool()
+        back_up_msg.data = False
+
+        if self.reverse_condition:
+            back_up_msg = Bool()
+            back_up_msg.data = True
+
+        self.back_up_pub.publish(back_up_msg)
+
+        # check if we are near the goal, and how long we have waited
+        # self.get_logger().info(f'Distance from goal: {np.linalg.norm(self.current_goal_pose - self.current_pose)}')
+        near_goal = (np.linalg.norm(self.current_goal_pose - self.current_pose) < goal_rad)
+        waited = False
+
+        if near_goal and self.goal_found_time is None and self.saw_banana:
+            self.get_logger().info(f'Updating the goal found time')
+            self.goal_found_time = self.get_clock().now().nanoseconds
+        elif self.goal_found_time is not None:
+            self.get_logger().info(f'Already have the goal found time, checking wait condition')
+            waited = ((self.get_clock().now().nanoseconds - self.goal_found_time) > 5*1e9)
+            self.get_logger().info(f'Wait condition is {waited}')
+
+        if self.goal_number == 0:
+            if near_goal and waited:
+                self.get_logger().info(f'Reversing')
+                self.reverse_condition = True
+
+        elif self.goal_number == 1:
+            if near_goal and waited:
+                self.get_logger().info(f'Reversing')
+                self.reverse_condition = True
+
+        if self.goal_number == 0:
+            if self.reverse_condition and self.far_from_goal():
+                self.get_logger().info(f'Replanning for banana 2')
                 self.current_goal_pose = self.banana_points[1]
-                self.goals_reached[1] = True
-            else:
-                self.goals_reached[0] = True  
-            self.replan()  
-        return       
-        
+                self.goal_number += 1
+
+                msg = Int32()
+                msg.data = self.goal_number
+                self.banana_id_pub.publish(msg)
+
+                self.goal_found_time = None
+                self.reverse_condition = False
+                self.saw_banana = False
+                self.replan()
+
+        elif self.goal_number == 1:
+            if self.reverse_condition and self.far_from_goal():
+                self.get_logger().info(f'Replanning to goal')
+                self.current_goal_pose = self.start_pose
+                self.goal_number += 1
+
+                msg = Int32()
+                msg.data = self.goal_number
+                self.banana_id_pub.publish(msg)
+                
+                self.goal_found_time = None
+                self.reverse_condition = False
+                self.saw_banana = False
+                self.replan()
+
+        elif self.goal_number == 2:
+            pass
+
+        # self.replan()
+
+        return 
+    # def check_goal_pose(self, goal_rad):
+    #     # Check if at goal
+    #     self.get_logger().info(f'Distance to goal pose {np.linalg.norm(self.current_goal_pose - self.current_pose)}')
+    #     if np.linalg.norm(self.current_goal_pose - self.current_pose) < goal_rad:
+    #         self.get_logger().info('At current goal pose')
+    #         if self.goals_reached[1]:
+    #             self.current_goal_pose = self.start_pose
+    #         elif self.goals_reached[0]:
+    #             self.current_goal_pose = self.banana_points[1]
+    #             self.goals_reached[1] = True
+    #         else:
+    #             self.goals_reached[0] = True  
+    #         return True
+    #     return False
+    # NEW CODE
+    def detection_callback(self, img_msg, goal_rad=2.0):
+        near_goal = (np.linalg.norm(self.current_goal_pose - self.current_pose) < goal_rad)
+        if near_goal:
+            self.saw_banana = True
+
+    # def back_up(self):
+    #   pass
+
+    def far_from_goal(self, goal_rad=2.5):
+        return (np.linalg.norm(self.current_goal_pose - self.current_pose) > goal_rad)
+
+
     def banana_point_cb(self, msg: Point):
        # Extract the first two pose positions and convert to numpy arrays
         if len(self.banana_points) == 2:

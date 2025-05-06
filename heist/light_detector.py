@@ -67,10 +67,11 @@ class LightDetector(Node):
 
         light_on_and_close = Bool()
         light_on_and_close.data = is_light
+        # self.get_logger().info(f'Traffic light detector sees light: {is_light}')
         self.lights_pub.publish(light_on_and_close)
 
         if self.debug:
-            self.get_logger().info(f"Light detected with area {area} px^2, length/width {length}, {width} px")
+            # self.get_logger().info(f"Light detected with area {area} px^2, length/width {length}, {width} px")
             if(not is_light):
                 cv2.rectangle(image, (x1, y1), (x2, y2), (0, 0, 255), 2)
             debug_msg = self.bridge.cv2_to_imgmsg(image, "bgr8")

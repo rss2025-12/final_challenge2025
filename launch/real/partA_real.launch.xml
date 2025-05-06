@@ -11,7 +11,19 @@
     <node pkg="path_planning" exec="trajectory_planner" name="trajectory_planner" output="screen">
         <param from="$(find-pkg-share heist)/config/real/real_config.yaml"/>
     </node>
-    <node pkg="localization" exec="trajectory_follower" name="trajectory_follower">
+     <node pkg="path_planning" exec="trajectory_follower" name="trajectory_follower">
+        <param from="$(find-pkg-share heist)/config/real/real_config.yaml"/>
+    </node>
+    <node pkg="localization" exec="particle_filter" name="particle_filter">
+        <param from="$(find-pkg-share heist)/config/real/real_config.yaml"/>
+    </node>
+    <node pkg="safety_controller" exec="safety" name="safety">
+        <param from="$(find-pkg-share heist)/config/real/real_config.yaml"/>
+    </node>
+    <node pkg="heist" exec="detection_node" name="detection_node">
+        <param from="$(find-pkg-share heist)/config/real/real_config.yaml"/>
+    </node>
+    <node pkg="heist" exec="light_detector" name="light_detector">
         <param from="$(find-pkg-share heist)/config/real/real_config.yaml"/>
     </node>
 </launch>
