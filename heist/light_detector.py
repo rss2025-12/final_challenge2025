@@ -12,7 +12,7 @@ from sensor_msgs.msg import Image
 from geometry_msgs.msg import Point #geometry_msgs not in CMake file
 
 # import your color segmentation algorithm; call this function in ros_image_callback!
-from computer_vision.color_segmentation import cd_color_segmentation, detect_apriltags
+from computer_vision.color_segmentation import cd_color_segmentation, detect_apriltags, image_print
 
 
 class LightDetector(Node):
@@ -54,7 +54,8 @@ class LightDetector(Node):
         """
 
         image = self.bridge.imgmsg_to_cv2(image_msg, "bgr8")
-        bounding_box = cd_color_segmentation(image, "placeholder", False)
+        image[:95,:,:] = 255
+        bounding_box = cd_color_segmentation(image, "placeholder", display=False)
 
         ### AprilTag Detection (Remeber to comment out) ###
         # self.april_tag_distances(detect_apriltags(image))
@@ -63,7 +64,7 @@ class LightDetector(Node):
         length = x2-x1
         width = y2-y1
         area = length*width
-        is_light = area>100
+        is_light = area>70
 
         light_on_and_close = Bool()
         light_on_and_close.data = is_light

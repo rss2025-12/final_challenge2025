@@ -15,64 +15,66 @@ class StateMachine(Node):
     def __init__(self):
         super().__init__("state_machine")
         self.declare_parameter('sm_start_pose_topic', "default")
-        self.declare_parameter('clicked_point_topic', "default") 
+        self.declare_parameter('clicked_point_topic', "default")
         self.declare_parameter('odom_topic', "default")
 
         self.start_pose_topic = self.get_parameter('sm_start_pose_topic').get_parameter_value().string_value
         self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
+
         self.banana_topic = self.get_parameter('clicked_point_topic').get_parameter_value().string_value
         self.marker_pub = self.create_publisher(Marker, '/bananaaa', 10)
         self.banana_id_pub = self.create_publisher(Int32, '/banana_id', 1)
-        self.back_up_pub = self.create_publisher(Bool, '/back_up', 1)
-        # NEW CODE
-        self.detection_sub = self.create_subscription(Image, '/detector/output_image', self.detection_callback, 1)
-        self.goal_number = 0
 
-        # self.get_logger().info(f'THE ODOM TOPIC IS {self.odom_topic}')
+        self.back_up_pub = self.create_publisher(Bool, '/back_up', 1)
+        self.detection_sub = self.create_subscription(Image, '/detector/output_image', self.detection_callback, 1)
 
         self.start_pose_sub = self.create_subscription(
             PoseWithCovarianceStamped,
-            self.start_pose_topic,
-            self.start_pose_cb,
-            10,
-        )
+            self.start_pose_topic, self.start_pose_cb, 10)
 
         self.odom_sub = self.create_subscription(
             Odometry,
-            self.odom_topic,
-            self.odom_cb,
-            1,
-        )
+            self.odom_topic, self.odom_cb, 1)
 
         self.banana_point_sub = self.create_subscription(
             PoseArray,
-            self.banana_topic,
-            self.banana_point_cb,
-            10,
-        )
+            self.banana_topic, self.banana_point_cb, 10)
 
         self.initial_pub = self.create_publisher(
             PoseWithCovarianceStamped,
-            "/sm_initialpose",
-            10
-        )
-        
+            "/sm_initialpose", 10)
+
         self.goal_pub = self.create_publisher(
             PoseStamped,
-            "/goal_pose",
-            1
-        )
+            "/goal_pose", 1)
 
         self.start_pose = None
         self.current_pose = None
         self.current_goal_pose = None
+
         self.banana_points = []
         self.goals_reached = [False, False]
-        self.goal_found_time = None
-        # self.reversed = False
-        self.reverse_condition = False
+
+        self.goal_number = 0
         self.saw_banana = False
-    
+        self.goal_found_time = None
+        self.intermediate_goals = [np.array([-32.0, 34.0]), np.array([-54.6, 25.2]), np.array([-45.0, -1.0])]
+        self.reverse_condition = False
+
+    def banana_point_cb(self, msg: Point):
+       # Extract the first two pose positions and convert to numpy arrays
+        if len(self.banana_points) == 2:
+            return
+        self.banana_points = [
+            np.array([msg.poses[0].position.x, msg.poses[0].position.y]),
+            np.array([msg.poses[1].position.x, msg.poses[1].position.y])
+        ]
+
+        # Set the current goal pose to the first banana point
+        self.current_goal_pose = self.banana_points[0]
+        self.publish_markers()
+        self.get_logger().info(f'Banana points set to: {self.banana_points}')
+
     def start_pose_cb(self, pose):
         x = pose.pose.pose.position.x
         y = pose.pose.pose.position.y
@@ -87,11 +89,13 @@ class StateMachine(Node):
         self.start_pose = np.array([x, y]) #, theta])
         self.current_pose = np.array([x, y])
         self.replan()
-        self.get_logger().info(f"Initial Pose Received")
-    
+        self.get_logger().info(f"Initial path requested")
+
     def odom_cb(self, odometry_msg, goal_rad=1.0):
         if self.current_goal_pose is None:
             return
+
+        # Current pose
         x = odometry_msg.pose.pose.position.x
         y = odometry_msg.pose.pose.position.y
         quaternion = [
@@ -101,44 +105,45 @@ class StateMachine(Node):
             odometry_msg.pose.pose.orientation.w
         ]
         _, _, theta = R.from_quat(quaternion).as_euler('xyz', degrees=False)
-
         self.current_pose = np.array([x, y])
 
+        # Backing up
         back_up_msg = Bool()
         back_up_msg.data = False
-
         if self.reverse_condition:
             back_up_msg = Bool()
             back_up_msg.data = True
-
         self.back_up_pub.publish(back_up_msg)
 
-        # check if we are near the goal, and how long we have waited
-        # self.get_logger().info(f'Distance from goal: {np.linalg.norm(self.current_goal_pose - self.current_pose)}')
+        # Check if we are near the goal
         near_goal = (np.linalg.norm(self.current_goal_pose - self.current_pose) < goal_rad)
+
+        # Wait logic
         waited = False
+        if self.goal_number < 2:
+            if near_goal and self.goal_found_time is None and self.saw_banana:
+                self.get_logger().info(f'Found goal, starting timer')
+                self.goal_found_time = self.get_clock().now().nanoseconds
+            elif self.goal_found_time is not None:
+                # self.get_logger().info(f'Already have the goal found time, checking wait condition')
+                waited = ((self.get_clock().now().nanoseconds - self.goal_found_time) > 5*1e9)
+                # self.get_logger().info(f'Wait condition is {waited}')
+        else:
+            waited = True
 
-        if near_goal and self.goal_found_time is None and self.saw_banana:
-            self.get_logger().info(f'Updating the goal found time')
-            self.goal_found_time = self.get_clock().now().nanoseconds
-        elif self.goal_found_time is not None:
-            self.get_logger().info(f'Already have the goal found time, checking wait condition')
-            waited = ((self.get_clock().now().nanoseconds - self.goal_found_time) > 5*1e9)
-            self.get_logger().info(f'Wait condition is {waited}')
-
+        # Reverse logic
         if self.goal_number == 0:
             if near_goal and waited:
                 self.get_logger().info(f'Reversing')
                 self.reverse_condition = True
-
         elif self.goal_number == 1:
             if near_goal and waited:
                 self.get_logger().info(f'Reversing')
                 self.reverse_condition = True
 
+        # Replan logic
         if self.goal_number == 0:
             if self.reverse_condition and self.far_from_goal():
-                self.get_logger().info(f'Replanning for banana 2')
                 self.current_goal_pose = self.banana_points[1]
                 self.goal_number += 1
 
@@ -149,74 +154,72 @@ class StateMachine(Node):
                 self.goal_found_time = None
                 self.reverse_condition = False
                 self.saw_banana = False
+
+                self.get_logger().info(f'Replanning to banana 2')
                 self.replan()
+        # elif self.goal_number == 1:
+        #     if self.reverse_condition and self.far_from_goal():
+        #         # self.current_goal_pose = self.start_pose
+        #         self.current_goal_pose = np.array([-32.0, 34.0])
+        #         self.goal_number += 1
 
-        elif self.goal_number == 1:
-            if self.reverse_condition and self.far_from_goal():
-                self.get_logger().info(f'Replanning to goal')
-                self.current_goal_pose = self.start_pose
-                self.goal_number += 1
+        #         msg = Int32()
+        #         msg.data = self.goal_number
+        #         self.banana_id_pub.publish(msg)
 
-                msg = Int32()
-                msg.data = self.goal_number
-                self.banana_id_pub.publish(msg)
-                
-                self.goal_found_time = None
-                self.reverse_condition = False
-                self.saw_banana = False
-                self.replan()
+        #         self.goal_found_time = None
+        #         self.reverse_condition = False
+        #         self.saw_banana = False
 
-        elif self.goal_number == 2:
-            pass
+        #         self.get_logger().info(f'Replanning to start')
+        #         self.replan()
 
-        # self.replan()
+        elif self.goal_number >= 1 and self.goal_number < 5:
+            self.current_goal_pose = self.intermediate_goals[self.goal_number-1]
+            self.goal_number += 1
 
-        return 
-    # def check_goal_pose(self, goal_rad):
-    #     # Check if at goal
-    #     self.get_logger().info(f'Distance to goal pose {np.linalg.norm(self.current_goal_pose - self.current_pose)}')
-    #     if np.linalg.norm(self.current_goal_pose - self.current_pose) < goal_rad:
-    #         self.get_logger().info('At current goal pose')
-    #         if self.goals_reached[1]:
-    #             self.current_goal_pose = self.start_pose
-    #         elif self.goals_reached[0]:
-    #             self.current_goal_pose = self.banana_points[1]
-    #             self.goals_reached[1] = True
-    #         else:
-    #             self.goals_reached[0] = True  
-    #         return True
-    #     return False
-    # NEW CODE
-    def detection_callback(self, img_msg, goal_rad=2.0):
+            msg = Int32()
+            msg.data = self.goal_number
+            self.banana_id_pub.publish(msg)
+
+            self.goal_found_time = None
+            self.reverse_condition = False
+            self.saw_banana = False
+
+            self.get_logger().info(f'Replanning to start')
+            if self.goal_number == 1:
+                manual_start = self.banana_points[1]
+            else:
+                manual_start = self.intermediate_goals[self.goal_number-2]
+            self.replan(manual_start_pose=manual_start)
+
+        elif self.goal_number == 5:
+            self.current_goal_pose = self.start_pose
+            self.goal_number += 1
+
+            msg = Int32()
+            msg.data = self.goal_number
+            self.banana_id_pub.publish(msg)
+
+            self.goal_found_time = None
+            self.reverse_condition = False
+            self.saw_banana = False
+
+            self.get_logger().info(f'Replanning to start')
+            self.replan()
+
+    def detection_callback(self, img_msg, goal_rad=0.75): # goal dist
         near_goal = (np.linalg.norm(self.current_goal_pose - self.current_pose) < goal_rad)
         if near_goal:
             self.saw_banana = True
 
-    # def back_up(self):
-    #   pass
-
-    def far_from_goal(self, goal_rad=2.5):
+    def far_from_goal(self, goal_rad=1.5):
         return (np.linalg.norm(self.current_goal_pose - self.current_pose) > goal_rad)
 
-
-    def banana_point_cb(self, msg: Point):
-       # Extract the first two pose positions and convert to numpy arrays
-        if len(self.banana_points) == 2:
-            return
-        self.banana_points = [
-            np.array([msg.poses[0].position.x, msg.poses[0].position.y]),
-            np.array([msg.poses[1].position.x, msg.poses[1].position.y])
-        ]
-
-        # Set the current goal pose to the first banana point
-        self.current_goal_pose = self.banana_points[0]
-        self.publish_markers()
-        # self.replan()
-        
-        self.get_logger().info(f'Banana points set to: {self.banana_points}')
-
-    def replan(self):
+    def replan(self, manual_start_pose=None):
         start_x, start_y = self.current_pose
+        if manual_start_pose is not None:
+            start_x, start_y = manual_start_pose
         theta = np.pi
         goal_x, goal_y = self.current_goal_pose
 
@@ -246,15 +249,17 @@ class StateMachine(Node):
         self.initial_pub.publish(initial_pose_msg)
         self.goal_pub.publish(goal_msg)
 
-        self.get_logger().info("Sent new start and goal poses")
+        self.get_logger().info("Sent start and goal poses")
 
     def publish_markers(self):
+        """
+        Publishing banana positions for RViz
+        """
         marker = Marker()
         marker.header.stamp = self.get_clock().now().to_msg()
         marker.header.frame_id = 'map'
         marker.ns = 'banana:)'
         marker.id = 0
-        # marker.type = Marker.POINTS
         marker.type = 8
         marker.action = Marker.ADD
 
@@ -268,7 +273,7 @@ class StateMachine(Node):
         marker.color.b = 0.0
         marker.color.a = 1.0
         self.marker_pub.publish(marker)
-  
+
 def main(args=None):
     rclpy.init(args=args)
     grid_manager = StateMachine()
@@ -278,3 +283,19 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+
+    # def check_goal_pose(self, goal_rad):
+    #     # Check if at goal
+    #     self.get_logger().info(f'Distance to goal pose {np.linalg.norm(self.current_goal_pose - self.current_pose)}')
+    #     if np.linalg.norm(self.current_goal_pose - self.current_pose) < goal_rad:
+    #         self.get_logger().info('At current goal pose')
+    #         if self.goals_reached[1]:
+    #             self.current_goal_pose = self.start_pose
+    #         elif self.goals_reached[0]:
+    #             self.current_goal_pose = self.banana_points[1]
+    #             self.goals_reached[1] = True
+    #         else:
+    #             self.goals_reached[0] = True
+    #         return True
+    #     return False
+    # NEW CODE
