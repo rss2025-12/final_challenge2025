@@ -14,9 +14,9 @@ class StateMachine(Node):
     """
     def __init__(self):
         super().__init__("state_machine")
-        self.declare_parameter('sm_start_pose_topic', "default")
-        self.declare_parameter('clicked_point_topic', "default")
-        self.declare_parameter('odom_topic', "default")
+        self.declare_parameter('sm_start_pose_topic', "/initialpose")
+        self.declare_parameter('clicked_point_topic', "/shrinkray_part")
+        self.declare_parameter('odom_topic', "/pf/pose/odom")
 
         self.start_pose_topic = self.get_parameter('sm_start_pose_topic').get_parameter_value().string_value
         self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
@@ -54,24 +54,25 @@ class StateMachine(Node):
 
         self.banana_points = []
         self.goals_reached = [False, False]
-
-        self.goal_number = 0
         self.saw_banana = False
         self.goal_found_time = None
+
+        self.goal_number = 0
+        self.goal_points = [np.array([-6.15, 20.7])]
         self.intermediate_goals = [np.array([-32.0, 34.0]), np.array([-54.6, 25.2]), np.array([-45.0, -1.0])]
         self.reverse_condition = False
+        self.reverse = False
 
     def banana_point_cb(self, msg: Point):
        # Extract the first two pose positions and convert to numpy arrays
-        if len(self.banana_points) == 2:
+        if len(self.banana_points) >= 3:
             return
-        self.banana_points = [
-            np.array([msg.poses[0].position.x, msg.poses[0].position.y]),
-            np.array([msg.poses[1].position.x, msg.poses[1].position.y])
-        ]
+
+        self.goal_points.append(np.array([msg.poses[0].position.x, msg.poses[0].position.y]))
+        self.goal_points.append(np.array([msg.poses[1].position.x, msg.poses[1].position.y]))
 
         # Set the current goal pose to the first banana point
-        self.current_goal_pose = self.banana_points[0]
+        self.current_goal_pose = self.goal_points[0]
         self.publish_markers()
         self.get_logger().info(f'Banana points set to: {self.banana_points}')
 
@@ -86,7 +87,7 @@ class StateMachine(Node):
         ]
         _, _, theta = R.from_quat(quaternion).as_euler('xyz', degrees=False)
 
-        self.start_pose = np.array([x, y]) #, theta])
+        self.start_pose = np.array([x, y])
         self.current_pose = np.array([x, y])
         self.replan()
         self.get_logger().info(f"Initial path requested")
@@ -109,104 +110,57 @@ class StateMachine(Node):
 
         # Backing up
         back_up_msg = Bool()
-        back_up_msg.data = False
-        if self.reverse_condition:
-            back_up_msg = Bool()
-            back_up_msg.data = True
+        back_up_msg.data = self.reverse
         self.back_up_pub.publish(back_up_msg)
 
         # Check if we are near the goal
         near_goal = (np.linalg.norm(self.current_goal_pose - self.current_pose) < goal_rad)
 
-        # Wait logic
-        waited = False
-        if self.goal_number < 2:
-            if near_goal and self.goal_found_time is None and self.saw_banana:
-                self.get_logger().info(f'Found goal, starting timer')
-                self.goal_found_time = self.get_clock().now().nanoseconds
-            elif self.goal_found_time is not None:
-                # self.get_logger().info(f'Already have the goal found time, checking wait condition')
-                waited = ((self.get_clock().now().nanoseconds - self.goal_found_time) > 5*1e9)
-                # self.get_logger().info(f'Wait condition is {waited}')
-        else:
-            waited = True
+        if near_goal and self.goal_found_time is None:
+            self.goal_found_time = self.get_clock().now().nanoseconds
 
-        # Reverse logic
+        # Intermediate
         if self.goal_number == 0:
-            if near_goal and waited:
-                self.get_logger().info(f'Reversing')
-                self.reverse_condition = True
+            if near_goal:
+                self.current_goal_pose = self.goal_points[1]
+                self.get_logger().info(f'Path planning to banana 1')
+                self.replan()
+        # Banana 1
         elif self.goal_number == 1:
-            if near_goal and waited:
-                self.get_logger().info(f'Reversing')
-                self.reverse_condition = True
+            if near_goal:
+                waited = ((self.get_clock().now().nanoseconds - self.goal_found_time) > 5*1e9)
+                if waited:
+                    self.reverse = True
 
-        # Replan logic
-        if self.goal_number == 0:
-            if self.reverse_condition and self.far_from_goal():
-                self.current_goal_pose = self.banana_points[1]
+            if self.reverse and self.far_from_goal():
                 self.goal_number += 1
+                self.current_goal_pose = self.goal_points[2]
+
+                self.saw_banana = False
+                self.goal_found_time = None
+                self.reverse = False
+                self.get_logger().info(f'Path planning to banana 2')
+                self.replan()
+        # Banana 2
+        elif self.goal_number == 2:
+            if near_goal:
+                waited = ((self.get_clock().now().nanoseconds - self.goal_found_time) > 5*1e9)
+                if waited:
+                    self.reverse = True
+
+            if self.reverse and self.far_from_goal():
+                self.goal_number += 1
+                self.current_goal_pose = self.goal_points[3]
 
                 msg = Int32()
                 msg.data = self.goal_number
                 self.banana_id_pub.publish(msg)
 
-                self.goal_found_time = None
-                self.reverse_condition = False
                 self.saw_banana = False
-
-                self.get_logger().info(f'Replanning to banana 2')
+                self.goal_found_time = None
+                self.reverse = False
+                self.get_logger().info(f'Path planning to start')
                 self.replan()
-        # elif self.goal_number == 1:
-        #     if self.reverse_condition and self.far_from_goal():
-        #         # self.current_goal_pose = self.start_pose
-        #         self.current_goal_pose = np.array([-32.0, 34.0])
-        #         self.goal_number += 1
-
-        #         msg = Int32()
-        #         msg.data = self.goal_number
-        #         self.banana_id_pub.publish(msg)
-
-        #         self.goal_found_time = None
-        #         self.reverse_condition = False
-        #         self.saw_banana = False
-
-        #         self.get_logger().info(f'Replanning to start')
-        #         self.replan()
-
-        elif self.goal_number >= 1 and self.goal_number < 5:
-            self.current_goal_pose = self.intermediate_goals[self.goal_number-1]
-            self.goal_number += 1
-
-            msg = Int32()
-            msg.data = self.goal_number
-            self.banana_id_pub.publish(msg)
-
-            self.goal_found_time = None
-            self.reverse_condition = False
-            self.saw_banana = False
-
-            self.get_logger().info(f'Replanning to start')
-            if self.goal_number == 1:
-                manual_start = self.banana_points[1]
-            else:
-                manual_start = self.intermediate_goals[self.goal_number-2]
-            self.replan(manual_start_pose=manual_start)
-
-        elif self.goal_number == 5:
-            self.current_goal_pose = self.start_pose
-            self.goal_number += 1
-
-            msg = Int32()
-            msg.data = self.goal_number
-            self.banana_id_pub.publish(msg)
-
-            self.goal_found_time = None
-            self.reverse_condition = False
-            self.saw_banana = False
-
-            self.get_logger().info(f'Replanning to start')
-            self.replan()
 
     def detection_callback(self, img_msg, goal_rad=0.75): # goal dist
         near_goal = (np.linalg.norm(self.current_goal_pose - self.current_pose) < goal_rad)
