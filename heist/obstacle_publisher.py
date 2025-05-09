@@ -63,7 +63,7 @@ class ObstaclePublisher(Node):
         return T_world_point[0][2], T_world_point[1][2]
 
     def map_callback(self, msg):
-        self.get_logger().info("Received map")
+        self.get_logger().info("Map recieved")
         self.old_grid = msg
         self.resolution = msg.info.resolution
         self.map_width = msg.info.width

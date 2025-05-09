@@ -63,6 +63,8 @@ class StateMachine(Node):
         self.reverse_condition = False
         self.reverse = False
 
+        self.get_logger().info("State machine initialized")
+
     def banana_point_cb(self, msg: Point):
        # Extract the first two pose positions and convert to numpy arrays
         if len(self.banana_points) >= 3:
@@ -71,10 +73,12 @@ class StateMachine(Node):
         self.goal_points.append(np.array([msg.poses[0].position.x, msg.poses[0].position.y]))
         self.goal_points.append(np.array([msg.poses[1].position.x, msg.poses[1].position.y]))
 
+        self.goal_points += self.intermediate_goals
+
         # Set the current goal pose to the first banana point
         self.current_goal_pose = self.goal_points[0]
         self.publish_markers()
-        self.get_logger().info(f'Banana points set to: {self.banana_points}')
+        self.get_logger().info(f'Banana points set to: {self.goal_points}')
 
     def start_pose_cb(self, pose):
         x = pose.pose.pose.position.x
@@ -87,8 +91,10 @@ class StateMachine(Node):
         ]
         _, _, theta = R.from_quat(quaternion).as_euler('xyz', degrees=False)
 
+        self.goal_points.append(np.array([x, y]))
         self.start_pose = np.array([x, y])
         self.current_pose = np.array([x, y])
+        self.publish_markers()
         self.replan()
         self.get_logger().info(f"Initial path requested")
 
@@ -122,6 +128,7 @@ class StateMachine(Node):
         # Intermediate
         if self.goal_number == 0:
             if near_goal:
+                self.goal_number += 1
                 self.current_goal_pose = self.goal_points[1]
                 self.get_logger().info(f'Path planning to banana 1')
                 self.replan()
@@ -130,6 +137,7 @@ class StateMachine(Node):
             if near_goal:
                 waited = ((self.get_clock().now().nanoseconds - self.goal_found_time) > 5*1e9)
                 if waited:
+                    self.get_logger().info("Reversing")
                     self.reverse = True
 
             if self.reverse and self.far_from_goal():
@@ -146,6 +154,7 @@ class StateMachine(Node):
             if near_goal:
                 waited = ((self.get_clock().now().nanoseconds - self.goal_found_time) > 5*1e9)
                 if waited:
+                    self.get_logger().info("Reversing")
                     self.reverse = True
 
             if self.reverse and self.far_from_goal():
@@ -159,8 +168,18 @@ class StateMachine(Node):
                 self.saw_banana = False
                 self.goal_found_time = None
                 self.reverse = False
-                self.get_logger().info(f'Path planning to start')
+                self.get_logger().info(f'Path planning to point {self.goal_number}')
                 self.replan()
+        elif self.goal_number >= 3:
+            if near_goal:
+                # Last point (start)
+                if self.goal_number == len(self.goal_points) - 1:
+                    self.get_logger().info("Completed route")
+                else:
+                    self.goal_number += 1
+                    self.current_goal_pose = self.goal_points[1]
+                    self.get_logger().info(f'Path planning to point {self.goal_number}')
+                    self.replan()
 
     def detection_callback(self, img_msg, goal_rad=0.75): # goal dist
         near_goal = (np.linalg.norm(self.current_goal_pose - self.current_pose) < goal_rad)
@@ -217,8 +236,8 @@ class StateMachine(Node):
         marker.type = 8
         marker.action = Marker.ADD
 
-        marker.points.append(Point(x=self.banana_points[0][0], y=self.banana_points[0][1], z=0.0))
-        marker.points.append(Point(x=self.banana_points[1][0], y=self.banana_points[1][1], z=0.0))
+        for point in self.goal_points:
+            marker.points.append(Point(x=point[0], y=point[1], z=0.0))
 
         marker.scale.x = .5
         marker.scale.y = .5
@@ -237,19 +256,3 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
-
-    # def check_goal_pose(self, goal_rad):
-    #     # Check if at goal
-    #     self.get_logger().info(f'Distance to goal pose {np.linalg.norm(self.current_goal_pose - self.current_pose)}')
-    #     if np.linalg.norm(self.current_goal_pose - self.current_pose) < goal_rad:
-    #         self.get_logger().info('At current goal pose')
-    #         if self.goals_reached[1]:
-    #             self.current_goal_pose = self.start_pose
-    #         elif self.goals_reached[0]:
-    #             self.current_goal_pose = self.banana_points[1]
-    #             self.goals_reached[1] = True
-    #         else:
-    #             self.goals_reached[0] = True
-    #         return True
-    #     return False
-    # NEW CODE

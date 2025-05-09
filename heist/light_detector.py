@@ -42,7 +42,7 @@ class LightDetector(Node):
         #         'count': 0
         #     }
 
-        self.get_logger().info("Light Detector Initialized")
+        self.get_logger().info("Light detector initialized")
 
     def image_callback(self, image_msg):
         """
