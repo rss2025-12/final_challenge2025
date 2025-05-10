@@ -47,7 +47,7 @@ class DetectorNode(Node):
             if p[-1] == 'traffic light':
                 # self.get_logger().info(f'I see a traffic light')
                 traffic_msg.data = True
-                
+
             if p[-1] == "banana":
                 annotated = self.detector.draw_box(out["original_image"], [p], draw_all =False)
                 cv2.imwrite(f'{self.save_filename}', np.array(annotated))
@@ -56,9 +56,9 @@ class DetectorNode(Node):
                 out_msg = self.bridge.cv2_to_imgmsg(np.array(annotated), encoding="rgb8")
                 self.get_logger().info(f'I see a banana')
                 self.publisher.publish(out_msg)
-            else: 
+            else:
                 annotated = self.detector.draw_box(out["original_image"], [p], draw_all =True)
-                cv2.imwrite(f'test_pic.jpg', np.array(annotated))
+                # cv2.imwrite(f'test_pic.jpg', np.array(annotated))
 
                 #convert back to ROS and publish
                 out_msg = self.bridge.cv2_to_imgmsg(np.array(annotated), encoding="rgb8")
@@ -68,10 +68,13 @@ class DetectorNode(Node):
             self.traffic_light_pub.publish(traffic_msg)
 
     def banana_id_cb(self, id_msg):
-        self.current_banana_id = id_msg.data 
-        if self.current_banana_id > 0:
+        self.current_banana_id = id_msg.data
+        if self.current_banana_id == 1:
             self.save_filename = 'banana_2.jpg'
-        
+        elif self.current_banana_id == 4:
+            self.save_filename = 'banana_3.jpg'
+
+
 
 def main(args=None):
     rclpy.init(args=args)
@@ -86,4 +89,3 @@ if __name__=="__main__":
 # cv2.imwrite('screenshot.jpg', image)
 # if is_light:
 #     cv2.imwrite('screenshot.jpg', image)
-

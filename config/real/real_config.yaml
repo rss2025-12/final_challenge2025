@@ -3,20 +3,24 @@ state_machine:
     sm_start_pose_topic: "/initialpose"
     clicked_point_topic: "/shrinkray_part"
     odom_topic: "/pf/pose/odom"
+
 obstacle_publisher:
   ros__parameters:
     map_topic: "/map"
+
 trajectory_planner:
   ros__parameters:
     odom_topic: "/pf/pose/odom"
     map_topic: "/map"
     scan_topic: "/scan"
     initial_pose_topic: "/sm_initialpose"
+
 trajectory_follower:
   ros__parameters:
     odom_topic: "/pf/pose/odom"
-    drive_topic: "/vesc/high_level/input/nav_0"
+    drive_topic: "/traj_follower_drive"
     drive_speed: 1.0
+
 particle_filter:
   ros__parameters:
     num_particles: 200
@@ -32,6 +36,16 @@ particle_filter:
     odom_invert: True
     sensor_model_frequency: 20.0
     lidar_scale_to_map_scale: 1.0
+
+wall_follower:
+  ros__parameters:
+    scan_topic: "/scan"
+    drive_topic: "/wall_follower_drive"
+    # planner_switch_topic: "/wall_follower_switch"
+    side: 1
+    velocity: 1.0
+    desired_distance: 1.0
+
 
 
 

@@ -26,4 +26,7 @@
     <node pkg="heist" exec="light_detector" name="light_detector">
         <param from="$(find-pkg-share heist)/config/real/real_config.yaml"/>
     </node>
+    <node pkg="wall_follower" exec="wall_follower" name="wall_follower">
+        <param from="$(find-pkg-share heist)/config/real/real_config.yaml"/>
+    </node>
 </launch>

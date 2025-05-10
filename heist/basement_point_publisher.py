@@ -17,7 +17,7 @@ class BasementPointPublisher(Node):
 
         self.array = []
 
-        self.get_logger().info("Point Publisher Initialized")
+        self.get_logger().info("Point publisher initialized")
 
     def callback(self, point_msg: PointStamped):
         x,y = point_msg.point.x, point_msg.point.y
