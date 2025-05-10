@@ -76,8 +76,8 @@ class StateMachine(Node):
             np.array([-32.0, 33.6]), 
             np.array([-54.5, 31.5]),
             # np.array([-45.0, -1.0]),
-            np.array([-55.5, 16.7]),
-            np.array([-53.5, 1.5]),
+            # np.array([-55.5, 16.7]),
+            # np.array([-53.5, 1.5]),
         ] 
         self.current_goal_pose = self.goal_points[0]
         self.reverse = False
@@ -205,19 +205,19 @@ class StateMachine(Node):
         elif self.goal_number == 6:
             self.handle_intermediate(near_goal, f'Path planning to point {self.goal_number + 1}')
         # Vending machine hallway
-        elif self.goal_number == 7:
-            self.handle_intermediate(near_goal, f'Path planning to point {self.goal_number + 1}')
-        # Vending machine hallway right side divot
-        elif self.goal_number == 8:
-            self.handle_intermediate(near_goal, f'Path planning to point {self.goal_number + 1}')
+        # elif self.goal_number == 7:
+        #     self.handle_intermediate(near_goal, f'Path planning to point {self.goal_number + 1}')
+        # # Vending machine hallway right side divot
+        # elif self.goal_number == 8:
+        #     self.handle_intermediate(near_goal, f'Path planning to point {self.goal_number + 1}')
         # Junction
-        elif self.goal_number == 9:
+        elif self.goal_number == 7:
             if near_goal:
                 self.goal_number += 1
                 self.switch_drive_sub()
                 self.get_logger().info("Wall following back to start")
         # Start
-        elif self.goal_number == 10:
+        elif self.goal_number == 8:
             near_goal = (np.linalg.norm(self.start_pose - self.current_pose) < 2.5)
             if near_goal:
                 self.done = True
